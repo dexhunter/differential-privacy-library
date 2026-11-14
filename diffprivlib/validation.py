@@ -186,16 +186,26 @@ def clip_to_bounds(array, bounds):
         raise TypeError(f"Input array must be a numpy array, got {type(array)}.")
 
     lower, upper = check_bounds(bounds, np.size(bounds[0]), min_separation=0)
-    clipped_array = array.copy()
+    clip = np.ndarray.clip if type(array) is np.ndarray else np.clip
+    lower_min = np.min(lower)
+    upper_max = np.max(upper)
 
-    if np.allclose(lower, np.min(lower)) and np.allclose(upper, np.max(upper)):
-        clipped_array = np.clip(clipped_array, np.min(lower), np.max(upper))
+    if ((np.all(lower == lower_min) or np.allclose(lower, lower_min))
+            and (np.all(upper == upper_max) or np.allclose(upper, upper_max))):
+        direct_output = type(array) is np.ndarray and array.ndim > 0 and array.dtype == np.dtype(float)
+        clip_input = array if direct_output else (np.asarray(array, order="C")
+                                                  if type(array) is np.ndarray else array.copy())
+        clip_output = np.empty_like(array, order="C") if direct_output else None
+        clipped_array = clip(clip_input, lower_min, upper_max, out=clip_output)
     else:
         if array.ndim != 2:
             raise ValueError(f"For non-scalar bounds, input array must be 2-dimensional. Got {array.ndim} dimensions.")
 
-        for feature in range(array.shape[1]):
-            clipped_array[:, feature] = np.clip(array[:, feature], lower[feature], upper[feature])
+        clipped_array = np.empty_like(array, order="C") if type(array) is np.ndarray else array.copy()
+        columns = (zip(array.T, clipped_array.T) if type(array) is np.ndarray else
+                   ((array[:, feature], clipped_array[:, feature]) for feature in range(array.shape[1])))
+        for feature, (input_column, output_column) in enumerate(columns):
+            clip(input_column, lower[feature], upper[feature], out=output_column, casting="unsafe")
 
     return clipped_array
 
